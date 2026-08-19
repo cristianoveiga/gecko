@@ -149,6 +149,9 @@ func TestExtractResourceStatuses_NodePool(t *testing.T) {
 			"conditions": []any{
 				map[string]any{"type": "Ready", "status": "True"},
 				map[string]any{"type": "AllNodesHealthy", "status": "True"},
+				map[string]any{"type": "AllMachinesReady", "status": "True"},
+				map[string]any{"type": "UpdatingConfig", "status": "False"},
+				map[string]any{"type": "UpdatingVersion", "status": "False"},
 			},
 		},
 	})
@@ -166,6 +169,9 @@ func TestExtractResourceStatuses_NodePool(t *testing.T) {
 	require.Contains(t, statuses, key)
 	assert.Equal(t, "True", statuses[key]["readyCondition"])
 	assert.Equal(t, "True", statuses[key]["allNodesHealthyCondition"])
+	assert.Equal(t, "True", statuses[key]["allMachinesReadyCondition"])
+	assert.Equal(t, "False", statuses[key]["updatingConfigCondition"])
+	assert.Equal(t, "False", statuses[key]["updatingVersionCondition"])
 }
 
 func TestExtractResourceStatuses_NilKubeContent(t *testing.T) {

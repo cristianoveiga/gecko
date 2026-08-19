@@ -188,6 +188,12 @@ func extractNPFields(raw []byte) (map[string]string, error) {
 			fields["readyCondition"] = c.Status
 		case "AllNodesHealthy":
 			fields["allNodesHealthyCondition"] = c.Status
+		case "AllMachinesReady":
+			fields["allMachinesReadyCondition"] = c.Status
+		case "UpdatingConfig":
+			fields["updatingConfigCondition"] = c.Status
+		case "UpdatingVersion":
+			fields["updatingVersionCondition"] = c.Status
 		}
 	}
 

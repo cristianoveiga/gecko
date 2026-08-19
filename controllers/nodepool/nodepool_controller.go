@@ -331,12 +331,24 @@ func (r *Reconciler) applyStatusConditions(np *privatev1.NodePool, mwStatus *tra
 		fmt.Sprintf("clusters-%s", np.Spec.ClusterID), np.Name)
 	availableStatus := "False"
 	allNodesHealthy := "False"
+	allMachinesReady := "False"
+	updatingConfig := "False"
+	updatingVersion := "False"
 	if rs, ok := mwStatus.ResourceStatuses[npKey]; ok {
 		if v, ok := rs["readyCondition"]; ok {
 			availableStatus = v
 		}
 		if v, ok := rs["allNodesHealthyCondition"]; ok {
 			allNodesHealthy = v
+		}
+		if v, ok := rs["allMachinesReadyCondition"]; ok {
+			allMachinesReady = v
+		}
+		if v, ok := rs["updatingConfigCondition"]; ok {
+			updatingConfig = v
+		}
+		if v, ok := rs["updatingVersionCondition"]; ok {
+			updatingVersion = v
 		}
 	}
 
@@ -350,6 +362,21 @@ func (r *Reconciler) applyStatusConditions(np *privatev1.NodePool, mwStatus *tra
 	availableReason := "NodePoolNotAvailable"
 	if availableStatus == "True" {
 		availableReason = "NodePoolAvailable"
+	}
+
+	// NodePoolProgressing is true when machines are still being provisioned
+	// or the nodepool is updating its config or version.
+	progressingStatus := metav1.ConditionFalse
+	progressingReason := "AsExpected"
+	if allMachinesReady != "True" {
+		progressingStatus = metav1.ConditionTrue
+		progressingReason = "MachinesNotReady"
+	} else if updatingConfig == "True" {
+		progressingStatus = metav1.ConditionTrue
+		progressingReason = "UpdatingConfig"
+	} else if updatingVersion == "True" {
+		progressingStatus = metav1.ConditionTrue
+		progressingReason = "UpdatingVersion"
 	}
 
 	a := meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
@@ -370,7 +397,13 @@ func (r *Reconciler) applyStatusConditions(np *privatev1.NodePool, mwStatus *tra
 		Reason:             healthReason,
 		ObservedGeneration: gen,
 	})
-	return a || b || c
+	d := meta.SetStatusCondition(&np.Status.Conditions, metav1.Condition{
+		Type:               "NodePoolProgressing",
+		Status:             progressingStatus,
+		Reason:             progressingReason,
+		ObservedGeneration: gen,
+	})
+	return a || b || c || d
 }
 
 // defaultReplicas is the hardcoded default for this POC.
