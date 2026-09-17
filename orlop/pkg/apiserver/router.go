@@ -42,11 +42,11 @@ func setupRouter(registry *ResourceRegistry, corsOrigins []string, customMiddlew
 		AllowedOrigins: corsOrigins,
 	}))
 
-	registerHealthEndpoints(r, nil)
-
 	for _, mw := range customMiddleware {
 		r.Use(mw)
 	}
+
+	registerHealthEndpoints(r, nil)
 
 	// Create discovery handler (private API advertises status subresource)
 	discoveryHandler := handlers.NewDiscoveryHandler(registry, nil)
@@ -169,11 +169,11 @@ func setupConvertingRouter(publicRegistry *ResourceRegistry, privateRegistry *Re
 		AllowedOrigins: corsOrigins,
 	}))
 
-	registerHealthEndpoints(r, check)
-
 	for _, mw := range customMiddleware {
 		r.Use(mw)
 	}
+
+	registerHealthEndpoints(r, check)
 
 	// Create discovery handler using public registry (for public API types)
 	// Public API does not advertise status subresource (GCP-1062)
