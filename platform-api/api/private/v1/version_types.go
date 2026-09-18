@@ -4,6 +4,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// Version provides clients with versions for cluster creation and upgrade
+// validation, including their channel-group membership. Version resources are
+// synchronized from Cincinnati by the version-sync controller and are read-only
+// to end users.
 type Version struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional

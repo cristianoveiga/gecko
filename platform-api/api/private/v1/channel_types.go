@@ -4,6 +4,9 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// Channel provides clients with the default version for cluster installation
+// and the minor version approved for automatic fleet upgrades. Channel resources
+// are managed by the platform and are read-only to end users.
 type Channel struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
