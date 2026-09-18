@@ -44,6 +44,8 @@ type mockStoreClient struct {
 	versions []privatev1.Version
 	created  []*privatev1.Version
 	updated  []*privatev1.Version
+	deleted  []*privatev1.Version
+	listed   bool
 }
 
 func (m *mockStoreClient) Get(_ context.Context, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
@@ -51,6 +53,7 @@ func (m *mockStoreClient) Get(_ context.Context, _ client.ObjectKey, _ client.Ob
 }
 
 func (m *mockStoreClient) List(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+	m.listed = true
 	versionList, ok := list.(*privatev1.VersionList)
 	if !ok {
 		return fmt.Errorf("unexpected list type %T", list)
@@ -69,6 +72,11 @@ func (m *mockStoreClient) Create(_ context.Context, obj client.Object, _ ...clie
 }
 
 func (m *mockStoreClient) Delete(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+	version, ok := obj.(*privatev1.Version)
+	if !ok {
+		return fmt.Errorf("unexpected delete type %T", obj)
+	}
+	m.deleted = append(m.deleted, version.DeepCopy())
 	return nil
 }
 
@@ -176,13 +184,88 @@ func TestFetchVersions(t *testing.T) {
 	assert.NotContains(t, versions, "4.21.9")
 }
 
-func TestApplyCreatesAndUpdatesVersions(t *testing.T) {
+func TestFetchVersionsRejectsConflictingPayloads(t *testing.T) {
+	server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+		switch channel {
+		case "stable-4.22":
+			return []versionresolution.ReleaseInfo{
+				{Version: "4.22.11", Payload: "quay.io/release:first"},
+			}, http.StatusOK
+		case "fast-4.22":
+			return []versionresolution.ReleaseInfo{
+				{Version: "4.22.11", Payload: "quay.io/release:second"},
+			}, http.StatusOK
+		default:
+			return nil, http.StatusOK
+		}
+	})
+	defer server.Close()
+
+	controller := newController(t, server, &mockStoreClient{})
+	_, err := controller.fetchVersions(context.Background(), newTestLogger(t))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conflicting release payloads")
+}
+
+func TestFetchVersionsRejectsEmptyPayload(t *testing.T) {
+	server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+		if channel == "stable-4.22" {
+			return []versionresolution.ReleaseInfo{
+				{Version: "4.22.11"},
+			}, http.StatusOK
+		}
+		return nil, http.StatusOK
+	})
+	defer server.Close()
+
+	controller := newController(t, server, &mockStoreClient{})
+	_, err := controller.fetchVersions(context.Background(), newTestLogger(t))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "has no payload")
+}
+
+func TestSyncPreservesSnapshotOnFetchFailure(t *testing.T) {
+	server := newCincinnatiServer(t, func(_ string) ([]versionresolution.ReleaseInfo, int) {
+		return nil, http.StatusInternalServerError
+	})
+	defer server.Close()
+
 	store := &mockStoreClient{versions: []privatev1.Version{
+		{ObjectMeta: objectMeta("4.22.11")},
+	}}
+	controller := newController(t, server, store)
+
+	controller.sync(context.Background(), newTestLogger(t))
+
+	assert.False(t, store.listed)
+	assert.Empty(t, store.created)
+	assert.Empty(t, store.updated)
+	assert.Empty(t, store.deleted)
+}
+
+func TestApplyCreatesUpdatesAndDeletesVersions(t *testing.T) {
+	store := &mockStoreClient{versions: []privatev1.Version{
+		{
+			ObjectMeta: objectMeta("4.22.9"),
+			Spec: privatev1.VersionSpec{
+				ChannelGroups: []string{"stable"},
+				ReleaseImage:  "quay.io/release:4.22.9",
+			},
+		},
 		{
 			ObjectMeta: objectMeta("4.22.10"),
 			Spec: privatev1.VersionSpec{
 				ChannelGroups: []string{"stable"},
 				ReleaseImage:  "quay.io/release:old",
+			},
+		},
+		{
+			ObjectMeta: objectMeta("4.22.11"),
+			Spec: privatev1.VersionSpec{
+				ChannelGroups: []string{"stable"},
+				ReleaseImage:  "quay.io/release:4.22.11",
 			},
 		},
 	}}
@@ -191,6 +274,10 @@ func TestApplyCreatesAndUpdatesVersions(t *testing.T) {
 		"4.22.10": {
 			ChannelGroups: []string{"fast", "stable"},
 			ReleaseImage:  "quay.io/release:4.22.10",
+		},
+		"4.22.11": {
+			ChannelGroups: []string{"stable"},
+			ReleaseImage:  "quay.io/release:4.22.11",
 		},
 		"4.22.12": {
 			ChannelGroups: []string{"fast"},
@@ -207,6 +294,8 @@ func TestApplyCreatesAndUpdatesVersions(t *testing.T) {
 	require.Len(t, store.created, 1)
 	assert.Equal(t, "4.22.12", store.created[0].Name)
 	assert.Equal(t, desired["4.22.12"], store.created[0].Spec)
+	require.Len(t, store.deleted, 1)
+	assert.Equal(t, "4.22.9", store.deleted[0].Name)
 }
 
 func objectMeta(name string) metav1.ObjectMeta {
