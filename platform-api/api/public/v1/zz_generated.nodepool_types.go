@@ -55,6 +55,7 @@ type NodePoolSpec struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=key
+	// +listMapKey=effect
 	Taints []TaintSpec `json:"taints,omitempty"`
 }
 

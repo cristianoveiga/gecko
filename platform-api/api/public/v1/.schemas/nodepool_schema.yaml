@@ -142,6 +142,7 @@ properties:
         type: array
         x-kubernetes-list-map-keys:
         - key
+        - effect
         x-kubernetes-list-type: map
     required:
     - clusterID
