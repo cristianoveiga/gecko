@@ -64,6 +64,7 @@ properties:
                 items:
                   type: string
                 type: array
+                x-kubernetes-list-type: atomic
               onHostMaintenance:
                 enum:
                 - MIGRATE
@@ -89,9 +90,11 @@ properties:
                       type: string
                   required:
                   - key
-                  - value
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
               subnet:
                 type: string
               zone:
@@ -137,6 +140,10 @@ properties:
           - key
           type: object
         type: array
+        x-kubernetes-list-map-keys:
+        - key
+        - effect
+        x-kubernetes-list-type: map
     required:
     - clusterID
     - platform
@@ -204,6 +211,9 @@ properties:
           - type
           type: object
         type: array
+        x-kubernetes-list-map-keys:
+        - type
+        x-kubernetes-list-type: map
       versionResolution:
         description: |-
           VersionResolution is written by the nodepool-vr controller.

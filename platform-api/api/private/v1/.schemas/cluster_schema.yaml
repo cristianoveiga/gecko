@@ -40,6 +40,7 @@ properties:
                   type: integer
               type: object
             type: array
+            x-kubernetes-list-type: atomic
           machineNetwork:
             items:
               properties:
@@ -49,6 +50,7 @@ properties:
               - cidr
               type: object
             type: array
+            x-kubernetes-list-type: atomic
           networkType:
             default: OVNKubernetes
             enum:
@@ -59,6 +61,7 @@ properties:
             items:
               type: string
             type: array
+            x-kubernetes-list-type: atomic
         type: object
       platform:
         properties:
@@ -89,9 +92,11 @@ properties:
                       type: string
                   required:
                   - key
-                  - value
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
               subnet:
                 type: string
               workloadIdentity:
@@ -213,6 +218,9 @@ properties:
           - type
           type: object
         type: array
+        x-kubernetes-list-map-keys:
+        - type
+        x-kubernetes-list-type: map
       hostedClusterResult:
         description: HostedClusterResult is written by the hc-adapter.
         properties:

@@ -1,3 +1,8 @@
+description: |-
+  Version provides clients with versions for cluster creation and upgrade
+  validation, including their channel-group membership. Version resources are
+  synchronized from Cincinnati by the version-sync controller and are read-only
+  to end users.
 properties:
   apiVersion:
     description: |-
@@ -25,6 +30,7 @@ properties:
         minItems: 1
         type: array
         uniqueItems: true
+        x-kubernetes-list-type: set
     required:
     - channelGroups
     type: object
