@@ -172,7 +172,7 @@ type NetworkingSpec struct {
 	// +orlop:public
 	// +optional
 	// +kubebuilder:validation:Enum=OVNKubernetes;Other
-	// +default=OVNKubernetes
+	// +default="OVNKubernetes"
 	NetworkType string `json:"networkType,omitempty"`
 }
 
