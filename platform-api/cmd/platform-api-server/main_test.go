@@ -1,8 +1,15 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-logr/logr"
+	"github.com/openshift-online/gecko/platform-api/pkg/featureflags"
 )
 
 func TestValidatePublicAuthAddress(t *testing.T) {
@@ -79,6 +86,62 @@ func TestValidatePublicAuthAddress(t *testing.T) {
 						t.Errorf("validation error exposes bind address %q: %v", address, err)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestConditionalAuthorizationMiddleware(t *testing.T) {
+	tests := []struct {
+		name       string
+		defaultVar string
+		wantCode   int
+	}{
+		{name: "enforced", defaultVar: "enabled", wantCode: http.StatusForbidden},
+		{name: "disabled", defaultVar: "disabled", wantCode: http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "flags.json")
+			contents := []byte(`{
+  "$schema": "https://flagd.dev/schema/v0/flags.json",
+  "flags": {
+    "gecko.public-api.authorization.enabled": {
+      "state": "ENABLED",
+      "variants": {
+        "enabled": true,
+        "disabled": false
+      },
+      "defaultVariant": "` + tt.defaultVar + `"
+    }
+  }
+}`)
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatalf("write flags: %v", err)
+			}
+			t.Setenv("FLAGD_OFFLINE_FLAG_SOURCE_PATH", path)
+
+			evaluator, err := featureflags.NewFromEnvironment()
+			if err != nil {
+				t.Fatalf("initialize feature flags: %v", err)
+			}
+			defer evaluator.Shutdown()
+
+			authorization := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
+				})
+			}
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			handler := conditionalAuthorizationMiddleware(evaluator, authorization, logr.Discard())(next)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/apis/gcp.managed.openshift.io/v1/namespaces/test/clusters", nil))
+			if recorder.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", recorder.Code, tt.wantCode)
 			}
 		})
 	}

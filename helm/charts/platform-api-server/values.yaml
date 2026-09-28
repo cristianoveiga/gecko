@@ -36,6 +36,22 @@ platformRoles:
   # projected to the public API.
   enabled: true
 
+featureFlags:
+  # When disabled, the application uses its safe code default: authorization
+  # enforcement remains enabled. Enable this ConfigMap to select an explicit
+  # environment-specific flag value.
+  enabled: false
+  filePath: /etc/gecko/flags/flags.json
+  mountPath: /etc/gecko/flags
+  offlinePollMs: 5000
+  flags:
+    "gecko.public-api.authorization.enabled":
+      state: ENABLED
+      variants:
+        enabled: true
+        disabled: false
+      defaultVariant: enabled
+
 corsOrigins: []
 
 serviceAccount:

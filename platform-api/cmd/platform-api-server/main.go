@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	_ "github.com/lib/pq"
 
@@ -25,6 +26,7 @@ import (
 	privatev1 "github.com/openshift-online/gecko/platform-api/api/private/v1"
 	"github.com/openshift-online/gecko/platform-api/pkg/authn"
 	"github.com/openshift-online/gecko/platform-api/pkg/authz"
+	"github.com/openshift-online/gecko/platform-api/pkg/featureflags"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimeschema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -91,6 +93,11 @@ func main() {
 	if err := validatePublicAuthAddress(enablePublic, address, publicAddress, devAuth, disableAuth); err != nil {
 		log.Fatal(err)
 	}
+	featureFlagEvaluator, err := featureflags.NewFromEnvironment()
+	if err != nil {
+		log.Fatalf("failed to initialize feature flags: %v", err)
+	}
+	defer featureFlagEvaluator.Shutdown()
 
 	// Parse CORS origins
 	origins := []string{}
@@ -206,7 +213,7 @@ func main() {
 		authorizer.StartWatching(stopCh)
 		return []func(http.Handler) http.Handler{
 			authn.Middleware(authn.Config{AllowDevHeader: devAuth}),
-			authz.Middleware(authorizer, logger),
+			conditionalAuthorizationMiddleware(featureFlagEvaluator, authz.Middleware(authorizer, logger), logger),
 		}, nil
 	}
 
@@ -264,6 +271,24 @@ func main() {
 	}
 
 	log.Println("Server stopped")
+}
+
+func conditionalAuthorizationMiddleware(evaluator *featureflags.Evaluator, authorization func(http.Handler) http.Handler, logger logr.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		enforced := authorization(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			enforce, err := evaluator.Boolean(r.Context(), featureflags.AuthorizationEnabledFlag, true)
+			if err != nil {
+				logger.Error(err, "authorization feature flag evaluation failed; enforcing authorization")
+				enforce = true
+			}
+			if enforce {
+				enforced.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func validatePublicAuthAddress(enablePublic bool, address, publicAddress string, devAuth, disableAuth bool) error {
