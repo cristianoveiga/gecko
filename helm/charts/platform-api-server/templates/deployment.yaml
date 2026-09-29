@@ -185,7 +185,7 @@ spec:
         {{- if .Values.featureFlags.enabled }}
         - name: feature-flags
           configMap:
-            name: {{ include "platform-api-server.fullname" . }}-feature-flags
+            name: {{ default (printf "%s-feature-flags" (include "platform-api-server.fullname" .)) .Values.featureFlags.configMapName }}
         {{- end }}
         {{- if .Values.esp.enabled }}
         - name: esp-tmp

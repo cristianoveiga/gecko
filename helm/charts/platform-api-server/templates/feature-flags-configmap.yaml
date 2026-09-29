@@ -1,4 +1,4 @@
-{{- if .Values.featureFlags.enabled }}
+{{- if and .Values.featureFlags.enabled .Values.featureFlags.createConfigMap }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

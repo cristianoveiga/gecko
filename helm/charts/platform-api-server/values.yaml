@@ -41,6 +41,10 @@ featureFlags:
   # enforcement remains enabled. Enable this ConfigMap to select an explicit
   # environment-specific flag value.
   enabled: false
+  # Set createConfigMap=false when the ConfigMap is managed by a separate
+  # ArgoCD feature-flags application.
+  createConfigMap: true
+  configMapName: ""
   filePath: /etc/gecko/flags/flags.json
   mountPath: /etc/gecko/flags
   offlinePollMs: 5000
