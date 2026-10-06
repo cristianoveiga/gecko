@@ -40,7 +40,7 @@ func IsAuthorizationExemptRequest(r *http.Request, resources []types.ResourceInf
 
 func resourcePathForRequest(parts []string, resource types.ResourceInfo) ([]string, bool) {
 	if resource.Namespaced {
-		if len(parts) != 6 && len(parts) != 7 || parts[3] != "namespaces" || parts[4] == "" || parts[5] != resource.Plural {
+		if (len(parts) != 6 && len(parts) != 7) || parts[3] != "namespaces" || parts[4] == "" || parts[5] != resource.Plural {
 			return nil, false
 		}
 		return parts[5:], true

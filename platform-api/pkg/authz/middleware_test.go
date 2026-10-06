@@ -123,3 +123,20 @@ func TestMiddlewareDoesNotBypassAuthorizationForClusterOrNodePool(t *testing.T) 
 		})
 	}
 }
+
+func TestMiddlewareFailsClosedWithoutAuthorizer(t *testing.T) {
+	resources := []types.ResourceInfo{{
+		GVK:        runtimeschema.GroupVersionKind{Group: "gcp.managed.openshift.io", Version: "v1", Kind: "NodePool"},
+		Plural:     "nodepools",
+		Namespaced: true,
+	}}
+	ctx := authn.WithUser(context.Background(), "alice@example.com")
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/apis/gcp.managed.openshift.io/v1/namespaces/project-a/nodepools", nil)
+	response := httptest.NewRecorder()
+	Middleware(nil, logr.Discard(), resources)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("request reached the next handler without an authorizer")
+	})).ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}

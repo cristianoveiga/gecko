@@ -33,6 +33,11 @@ func Middleware(authorizer *Authorizer, logger logr.Logger, authorizationExemptR
 				writeForbidden(w)
 				return
 			}
+			if authorizer == nil {
+				logger.Error(fmt.Errorf("authorizer is not configured"), "authorization denied")
+				writeForbidden(w)
+				return
+			}
 
 			requestInfo, err := parseRequestPath(r.URL.Path)
 			if err != nil {
