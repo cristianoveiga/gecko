@@ -44,8 +44,8 @@ type ResourceInfo struct {
 	Verbs []string
 	// AuthorizationExemptVerbs is the set of public API operations that do not
 	// require Cedar authorization. Authentication remains required. An empty
-	// list permits none. Values must be limited to globally readable operations
-	// because they are available to every authenticated caller.
+	// list permits none. Values are limited to non-mutating, globally readable
+	// operations because they are available to every authenticated caller.
 	// Populated from the // +orlop:authorization-exempt-verbs: annotation.
 	AuthorizationExemptVerbs []string
 }

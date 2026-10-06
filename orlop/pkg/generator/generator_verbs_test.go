@@ -106,6 +106,23 @@ type Widget struct {}
 	}
 }
 
+func TestScanTypeVerbs_AuthorizationExemptVerbsCannotMutate(t *testing.T) {
+	src := `package v1
+// +orlop:public-verbs: create,get,list
+// +orlop:authorization-exempt-verbs: create,get,list
+type Widget struct {}
+`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "types.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	g := &Generator{typeVerbs: make(map[string][]string), typeAuthorizationExemptVerbs: make(map[string][]string)}
+	if err := g.scanTypeVerbs(f, "types.go"); err == nil {
+		t.Fatal("expected error for mutating authorization-exempt verb")
+	}
+}
+
 func TestScanTypeVerbs_WithWhitespace(t *testing.T) {
 	src := `package v1
 // +orlop:public-verbs:  list ,  get

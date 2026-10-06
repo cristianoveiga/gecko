@@ -372,6 +372,12 @@ var validVerbs = map[string]bool{
 	"watch":  true,
 }
 
+var validAuthorizationExemptVerbs = map[string]bool{
+	"get":   true,
+	"list":  true,
+	"watch": true,
+}
+
 // parseVerbList parses a comma-separated verb list from an annotation value. It returns the deduplicated, validated verb
 // list or an error for unknown tokens.
 func parseVerbList(raw string) ([]string, error) {
@@ -491,6 +497,9 @@ func (g *Generator) scanTypeVerbs(file *ast.File, path string) error {
 					return fmt.Errorf("%s: type %s: +orlop:authorization-exempt-verbs requires +orlop:public-verbs", path, typeSpec.Name.Name)
 				}
 				for _, verb := range authorizationExemptVerbs {
+					if !validAuthorizationExemptVerbs[verb] {
+						return fmt.Errorf("%s: type %s: authorization-exempt verb %q is mutating (valid: get, list, watch)", path, typeSpec.Name.Name, verb)
+					}
 					if !containsVerb(verbs, verb) {
 						return fmt.Errorf("%s: type %s: authorization-exempt verb %q is not declared in +orlop:public-verbs", path, typeSpec.Name.Name, verb)
 					}

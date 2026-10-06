@@ -52,30 +52,17 @@ func resourcePathForRequest(parts []string, resource types.ResourceInfo) ([]stri
 }
 
 func requestVerb(r *http.Request, resourcePath []string) (string, bool) {
-	if len(resourcePath) == 1 {
-		switch r.Method {
-		case http.MethodGet:
-			if r.URL.Query().Get("watch") == "true" {
-				return "watch", true
-			}
-			return "list", true
-		case http.MethodPost:
-			return "create", true
-		}
+	if r.Method != http.MethodGet {
 		return "", false
+	}
+	if len(resourcePath) == 1 {
+		if r.URL.Query().Get("watch") == "true" {
+			return "watch", true
+		}
+		return "list", true
 	}
 	if len(resourcePath) != 2 || resourcePath[1] == "" {
 		return "", false
 	}
-	switch r.Method {
-	case http.MethodGet:
-		return "get", true
-	case http.MethodPut:
-		return "update", true
-	case http.MethodPatch:
-		return "patch", true
-	case http.MethodDelete:
-		return "delete", true
-	}
-	return "", false
+	return "get", true
 }

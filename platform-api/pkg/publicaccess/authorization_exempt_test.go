@@ -32,12 +32,6 @@ func TestIsAuthorizationExemptRequest(t *testing.T) {
 			AuthorizationExemptVerbs: []string{"get", "list", "watch"},
 		},
 		{
-			GVK:                      runtimeschema.GroupVersionKind{Group: "gcp.managed.openshift.io", Version: "v1", Kind: "Bootstrap"},
-			Plural:                   "bootstraps",
-			Verbs:                    []string{"create", "get", "list", "update", "patch", "delete"},
-			AuthorizationExemptVerbs: []string{"create", "get", "list", "update", "patch", "delete"},
-		},
-		{
 			GVK:    runtimeschema.GroupVersionKind{Group: "gcp.managed.openshift.io", Version: "v1", Kind: "Unmarked"},
 			Plural: "unmarkedresources",
 			Verbs:  []string{"get", "list"},
@@ -76,10 +70,6 @@ func TestIsAuthorizationExemptRequest(t *testing.T) {
 		{name: "watch allowed by verbs", method: http.MethodGet, path: "/apis/gcp.managed.openshift.io/v1/watchablecatalogs?watch=true", allow: true},
 		{name: "list with watch false", method: http.MethodGet, path: "/apis/gcp.managed.openshift.io/v1/versions?watch=false", allow: true},
 		{name: "create collection", method: http.MethodPost, path: "/apis/gcp.managed.openshift.io/v1/versions"},
-		{name: "authorization-exempt create", method: http.MethodPost, path: "/apis/gcp.managed.openshift.io/v1/bootstraps", allow: true},
-		{name: "authorization-exempt update", method: http.MethodPut, path: "/apis/gcp.managed.openshift.io/v1/bootstraps/example", allow: true},
-		{name: "authorization-exempt patch", method: http.MethodPatch, path: "/apis/gcp.managed.openshift.io/v1/bootstraps/example", allow: true},
-		{name: "authorization-exempt delete", method: http.MethodDelete, path: "/apis/gcp.managed.openshift.io/v1/bootstraps/example", allow: true},
 		{name: "update item", method: http.MethodPut, path: "/apis/gcp.managed.openshift.io/v1/versions/4.22.1"},
 		{name: "status subresource", method: http.MethodGet, path: "/apis/gcp.managed.openshift.io/v1/versions/4.22.1/status"},
 		{name: "different group", method: http.MethodGet, path: "/apis/other.example.io/v1/versions/4.22.1"},
