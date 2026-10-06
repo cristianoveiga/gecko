@@ -40,8 +40,13 @@ type ResourceInfo struct {
 	// Verbs is the set of HTTP verbs exposed on the public API for this resource.
 	// Valid values are: create, get, list, update, patch, delete, watch.
 	// When nil or empty, all verbs are allowed (full backward compatibility).
-	// Populated from the // +orlop:public-verbs: annotation on the package doc comment.
+	// Populated from the // +orlop:public-verbs: annotation on a type declaration.
 	Verbs []string
+	// AuthorizationExemptVerbs is the set of public API operations that do not
+	// require Cedar authorization. Authentication remains required. An empty
+	// list permits none.
+	// Populated from the // +orlop:authorization-exempt-verbs: annotation.
+	AuthorizationExemptVerbs []string
 }
 
 // VerbAllowed reports whether the given verb is permitted for this resource.
@@ -51,6 +56,17 @@ func (r ResourceInfo) VerbAllowed(verb string) bool {
 		return true
 	}
 	for _, v := range r.Verbs {
+		if v == verb {
+			return true
+		}
+	}
+	return false
+}
+
+// AuthorizationExemptVerbAllowed reports whether the given verb may bypass
+// Cedar authorization.
+func (r ResourceInfo) AuthorizationExemptVerbAllowed(verb string) bool {
+	for _, v := range r.AuthorizationExemptVerbs {
 		if v == verb {
 			return true
 		}

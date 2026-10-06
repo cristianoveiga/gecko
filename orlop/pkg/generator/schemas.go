@@ -15,13 +15,14 @@ import (
 )
 
 type schemaInfo struct {
-	typeName       string
-	plural         string
-	singular       string
-	namespaced     bool
-	schema         *apiextv1.JSONSchemaProps
-	printerColumns []printerColumn
-	verbs          []string // from +orlop:public-verbs annotation; nil means all verbs allowed
+	typeName                 string
+	plural                   string
+	singular                 string
+	namespaced               bool
+	schema                   *apiextv1.JSONSchemaProps
+	printerColumns           []printerColumn
+	verbs                    []string // from +orlop:public-verbs annotation; nil means all verbs allowed
+	authorizationExemptVerbs []string // from +orlop:authorization-exempt-verbs annotation
 }
 
 type printerColumn struct {
@@ -167,13 +168,14 @@ func (g *Generator) embedSchemas(crdDir string, targetDir string) error {
 
 		kindName := crd.Spec.Names.Kind
 		schemas = append(schemas, schemaInfo{
-			typeName:       kindName,
-			plural:         crd.Spec.Names.Plural,
-			singular:       crd.Spec.Names.Singular,
-			namespaced:     crd.Spec.Scope == apiextv1.NamespaceScoped,
-			schema:         version.Schema.OpenAPIV3Schema,
-			printerColumns: printerCols,
-			verbs:          g.typeVerbs[kindName],
+			typeName:                 kindName,
+			plural:                   crd.Spec.Names.Plural,
+			singular:                 crd.Spec.Names.Singular,
+			namespaced:               crd.Spec.Scope == apiextv1.NamespaceScoped,
+			schema:                   version.Schema.OpenAPIV3Schema,
+			printerColumns:           printerCols,
+			verbs:                    g.typeVerbs[kindName],
+			authorizationExemptVerbs: g.typeAuthorizationExemptVerbs[kindName],
 		})
 
 		// Remove the YAML file after extracting schema
@@ -277,6 +279,17 @@ func (g *Generator) generateSchemaGoFile(outputPath, packageDir string, schemas 
 			source.WriteString("\t// Generated from // +orlop:public-verbs annotation.\n")
 			source.WriteString("\tVerbs: []string{")
 			for i, v := range s.verbs {
+				if i > 0 {
+					source.WriteString(", ")
+				}
+				fmt.Fprintf(&source, "%q", v)
+			}
+			source.WriteString("},\n")
+		}
+		if len(s.authorizationExemptVerbs) > 0 {
+			source.WriteString("\t// Generated from // +orlop:authorization-exempt-verbs annotation.\n")
+			source.WriteString("\tAuthorizationExemptVerbs: []string{")
+			for i, v := range s.authorizationExemptVerbs {
 				if i > 0 {
 					source.WriteString(", ")
 				}

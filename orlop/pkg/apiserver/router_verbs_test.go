@@ -10,7 +10,7 @@ import (
 )
 
 func TestNotImplementedHandler_Returns501(t *testing.T) {
-	for _, verb := range []string{"create", "get", "list", "update", "patch", "delete"} {
+	for _, verb := range []string{"create", "get", "list", "update", "patch", "delete", "watch"} {
 		t.Run(verb, func(t *testing.T) {
 			h := notImplementedHandler(verb)
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
