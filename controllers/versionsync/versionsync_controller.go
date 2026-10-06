@@ -303,7 +303,6 @@ func parseMajorMinor(version string) (int, int, bool) {
 	return major, minor, true
 }
 
-// channelMinimum keeps catalog support independent of fleet upgrade authorization.
 func channelMinimum(channel privatev1.Channel) (int, int, error) {
 	value := channel.Spec.MinimumSupportedVersion
 	major, minor, valid := parseMajorMinor(value)
