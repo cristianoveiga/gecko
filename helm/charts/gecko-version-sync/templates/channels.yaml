@@ -6,6 +6,7 @@ metadata:
   labels:
     {{- include "gecko-version-sync.labels" $ | nindent 4 }}
 spec:
+  minimumSupportedVersion: {{ required (printf "channels.%s.minimumSupportedVersion is required" $name) $channel.minimumSupportedVersion | quote }}
   installDefaultVersion: {{ $channel.installDefaultVersion | quote }}
   fleetMinorVersion: {{ $channel.fleetMinorVersion | quote }}
 ---

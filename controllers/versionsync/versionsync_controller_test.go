@@ -175,7 +175,7 @@ func TestFetchVersions(t *testing.T) {
 	defer server.Close()
 
 	controller := newController(t, server, &mockStoreClient{})
-	versions, err := controller.fetchVersions(context.Background(), newTestLogger(t), []string{"stable", "fast"})
+	versions, err := controller.fetchVersions(context.Background(), newTestLogger(t), []privatev1.Channel{testChannel("stable", "4.22"), testChannel("fast", "4.22")})
 
 	require.NoError(t, err)
 	require.Len(t, versions, 2)
@@ -208,7 +208,7 @@ func TestFetchVersionsRejectsConflictingPayloads(t *testing.T) {
 	defer server.Close()
 
 	controller := newController(t, server, &mockStoreClient{})
-	_, err := controller.fetchVersions(context.Background(), newTestLogger(t), []string{"stable", "fast"})
+	_, err := controller.fetchVersions(context.Background(), newTestLogger(t), []privatev1.Channel{testChannel("stable", "4.22"), testChannel("fast", "4.22")})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "conflicting release payloads")
@@ -226,7 +226,7 @@ func TestFetchVersionsRejectsEmptyPayload(t *testing.T) {
 	defer server.Close()
 
 	controller := newController(t, server, &mockStoreClient{})
-	_, err := controller.fetchVersions(context.Background(), newTestLogger(t), []string{"stable"})
+	_, err := controller.fetchVersions(context.Background(), newTestLogger(t), []privatev1.Channel{testChannel("stable", "4.22")})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "has no payload")
@@ -275,19 +275,172 @@ func TestSyncPreservesSnapshotWhenNoChannelsExist(t *testing.T) {
 	assert.Empty(t, store.deleted)
 }
 
-func TestChannelGroupsAreReadFromChannelResources(t *testing.T) {
+func TestChannelsAreReadFromChannelResources(t *testing.T) {
 	store := &mockStoreClient{channels: []privatev1.Channel{
-		{ObjectMeta: objectMeta("nightly")},
-		{ObjectMeta: objectMeta("prerelease")},
-		{ObjectMeta: objectMeta("stable")},
+		testChannel("stable", "4.24"),
+		testChannel("nightly", "4.22"),
+		testChannel("prerelease", "4.23"),
 	}}
 	controller := &Controller{apiClient: store}
 
-	groups, err := controller.channelGroups(context.Background())
+	channels, err := controller.channels(context.Background())
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"nightly", "prerelease", "stable"}, groups)
+	assert.Equal(t, []privatev1.Channel{store.channels[1], store.channels[2], store.channels[0]}, channels)
 	assert.True(t, store.listedChannels)
+}
+
+func testChannel(name, minimum string) privatev1.Channel {
+	return privatev1.Channel{
+		ObjectMeta: objectMeta(name),
+		Spec: privatev1.ChannelSpec{
+			MinimumSupportedVersion: minimum,
+			InstallDefaultVersion:   "4.22.11",
+			FleetMinorVersion:       "4.22",
+		},
+	}
+}
+
+func TestFetchVersionsUsesMinimumSupportedVersion(t *testing.T) {
+	for _, tc := range []struct {
+		minimum string
+		first   string
+		want    []string
+	}{
+		{"4.21", "stable-4.21", []string{"4.21.1", "4.22.11", "4.23.1", "4.24.0-rc.1"}},
+		{"4.23", "stable-4.23", []string{"4.23.1", "4.24.0-rc.1"}},
+		{"4.24", "stable-4.24", []string{"4.24.0-rc.1"}},
+	} {
+		t.Run(tc.minimum, func(t *testing.T) {
+			var queries []string
+			server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+				queries = append(queries, channel)
+				versions := map[string]string{
+					"stable-4.21": "4.21.1", "stable-4.22": "4.22.11",
+					"stable-4.23": "4.23.1", "stable-4.24": "4.24.0-rc.1",
+				}
+				if version, ok := versions[channel]; ok {
+					return []versionresolution.ReleaseInfo{
+						{Version: version, Payload: "image:" + version},
+						{Version: "4.20.1", Payload: "old-upgrade-source"},
+						{Version: "v4.24.0", Payload: "non-canonical"},
+					}, http.StatusOK
+				}
+				return nil, http.StatusOK
+			})
+			defer server.Close()
+			controller := newController(t, server, &mockStoreClient{})
+			versions, err := controller.fetchVersions(context.Background(), newTestLogger(t), []privatev1.Channel{testChannel("stable", tc.minimum)})
+			require.NoError(t, err)
+			require.NotEmpty(t, queries)
+			assert.Equal(t, tc.first, queries[0])
+			assert.Contains(t, queries, "stable-4.24")
+			var names []string
+			for name := range versions {
+				names = append(names, name)
+			}
+			assert.ElementsMatch(t, tc.want, names)
+		})
+	}
+}
+
+func TestFetchVersionsUsesIndependentChannelMinima(t *testing.T) {
+	server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+		switch channel {
+		case "stable-4.22", "stable-4.24", "fast-4.24":
+			return []versionresolution.ReleaseInfo{
+				{Version: "4.22.11", Payload: "old"},
+				{Version: "4.24.0", Payload: "new"},
+			}, http.StatusOK
+		default:
+			return nil, http.StatusOK
+		}
+	})
+	defer server.Close()
+	controller := newController(t, server, &mockStoreClient{})
+	versions, err := controller.fetchVersions(context.Background(), newTestLogger(t), []privatev1.Channel{testChannel("stable", "4.22"), testChannel("fast", "4.24")})
+	require.NoError(t, err)
+	require.Len(t, versions, 2)
+	assert.Equal(t, []string{"stable"}, versions["4.22.11"].ChannelGroups)
+	assert.Equal(t, []string{"fast", "stable"}, versions["4.24.0"].ChannelGroups)
+}
+
+func TestInvalidMinimumSupportedVersionPreservesSnapshot(t *testing.T) {
+	for _, minimum := range []string{"", "4", "4.22.1", "-1.0", "4.-1", "04.22", "4.022", "4.22x"} {
+		t.Run(minimum, func(t *testing.T) {
+			server := newCincinnatiServer(t, func(string) ([]versionresolution.ReleaseInfo, int) {
+				t.Error("invalid minimum should fail before requesting Cincinnati")
+				return nil, http.StatusOK
+			})
+			defer server.Close()
+			store := &mockStoreClient{
+				channels: []privatev1.Channel{testChannel("stable", minimum)},
+				versions: []privatev1.Version{{ObjectMeta: objectMeta("4.22.11")}},
+			}
+			newController(t, server, store).sync(context.Background(), newTestLogger(t))
+			assert.False(t, store.listedVersions)
+			assert.Empty(t, store.created)
+			assert.Empty(t, store.updated)
+			assert.Empty(t, store.deleted)
+		})
+	}
+}
+
+func TestAdvancingFleetMinorPreservesSupportedVersionsAndInstallDefault(t *testing.T) {
+	server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+		switch channel {
+		case "stable-4.22":
+			return []versionresolution.ReleaseInfo{{Version: "4.22.11", Payload: "old"}}, http.StatusOK
+		case "stable-4.23":
+			return []versionresolution.ReleaseInfo{{Version: "4.23.1", Payload: "new"}}, http.StatusOK
+		default:
+			return nil, http.StatusOK
+		}
+	})
+	defer server.Close()
+	store := &mockStoreClient{channels: []privatev1.Channel{testChannel("stable", "4.22")}}
+	controller := newController(t, server, store)
+	controller.sync(context.Background(), newTestLogger(t))
+	require.Len(t, store.created, 2)
+	for _, version := range store.created {
+		store.versions = append(store.versions, *version.DeepCopy())
+	}
+	store.created = nil
+	store.channels[0].Spec.FleetMinorVersion = "4.23"
+	controller.sync(context.Background(), newTestLogger(t))
+	controller.sync(context.Background(), newTestLogger(t))
+	assert.Empty(t, store.created)
+	assert.Empty(t, store.updated)
+	assert.Empty(t, store.deleted)
+	assert.Equal(t, "4.22.11", store.channels[0].Spec.InstallDefaultVersion)
+}
+
+func TestRaisingMinimumSupportedVersionRemovesOlderMembership(t *testing.T) {
+	server := newCincinnatiServer(t, func(channel string) ([]versionresolution.ReleaseInfo, int) {
+		switch channel {
+		case "stable-4.24", "fast-4.22", "fast-4.24":
+			return []versionresolution.ReleaseInfo{{Version: "4.22.11", Payload: "old"}, {Version: "4.24.0", Payload: "new"}}, http.StatusOK
+		default:
+			return nil, http.StatusOK
+		}
+	})
+	defer server.Close()
+	store := &mockStoreClient{
+		channels: []privatev1.Channel{testChannel("stable", "4.24"), testChannel("fast", "4.22")},
+		versions: []privatev1.Version{
+			{ObjectMeta: objectMeta("4.22.11"), Spec: privatev1.VersionSpec{ReleaseImage: "old", ChannelGroups: []string{"fast", "stable"}}},
+			{ObjectMeta: objectMeta("4.22.12"), Spec: privatev1.VersionSpec{ReleaseImage: "stale", ChannelGroups: []string{"stable"}}},
+		},
+	}
+	newController(t, server, store).sync(context.Background(), newTestLogger(t))
+	require.Len(t, store.updated, 1)
+	assert.Equal(t, "4.22.11", store.updated[0].Name)
+	assert.Equal(t, []string{"fast"}, store.updated[0].Spec.ChannelGroups)
+	require.Len(t, store.deleted, 1)
+	assert.Equal(t, "4.22.12", store.deleted[0].Name)
+	require.Len(t, store.created, 1)
+	assert.Equal(t, "4.24.0", store.created[0].Name)
+	assert.Equal(t, []string{"fast", "stable"}, store.created[0].Spec.ChannelGroups)
 }
 
 func TestApplyCreatesUpdatesAndDeletesVersions(t *testing.T) {
