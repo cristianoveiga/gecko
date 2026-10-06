@@ -1,7 +1,7 @@
 description: |-
   Channel provides clients with the default version for cluster installation
-  and the minor version approved for automatic fleet upgrades. Channel resources
-  are managed by the platform and are read-only to end users.
+  and platform controls for supported releases and automatic fleet upgrades.
+  Channel resources are managed by the platform and are read-only to end users.
 properties:
   apiVersion:
     description: |-
@@ -35,9 +35,17 @@ properties:
           not provide a version during cluster creation.
         minLength: 1
         type: string
+      minimumSupportedVersion:
+        description: |-
+          MinimumSupportedVersion is the oldest major.minor release line included
+          in this Channel's version catalog, for example 4.22 or 4.24. It is independent
+          of fleet upgrade authorization and the pinned installation default.
+        pattern: ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
+        type: string
     required:
     - fleetMinorVersion
     - installDefaultVersion
+    - minimumSupportedVersion
     type: object
 required:
 - spec

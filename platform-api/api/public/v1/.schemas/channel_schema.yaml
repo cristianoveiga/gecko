@@ -1,7 +1,7 @@
 description: |-
   Channel provides clients with the default version for cluster installation
-  and the minor version approved for automatic fleet upgrades. Channel resources
-  are managed by the platform and are read-only to end users.
+  and platform controls for supported releases and automatic fleet upgrades.
+  Channel resources are managed by the platform and are read-only to end users.
 properties:
   apiVersion:
     description: |-
@@ -23,14 +23,10 @@ properties:
   spec:
     description: ChannelSpec contains platform-managed controls for a channel group.
     properties:
-      fleetMinorVersion:
-        pattern: ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
-        type: string
       installDefaultVersion:
         minLength: 1
         type: string
     required:
-    - fleetMinorVersion
     - installDefaultVersion
     type: object
 required:

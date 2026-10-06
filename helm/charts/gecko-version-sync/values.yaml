@@ -20,6 +20,16 @@ cincinnati:
 # Channel CRs created by this map also define the Cincinnati channel groups that
 # version-sync probes. For example, prod may use stable/fast/candidate/eus while
 # non-prod may use stable/prerelease/nightly with the CI Cincinnati endpoint.
+# Each Channel must set minimumSupportedVersion (major.minor)
+# to control catalog discovery and membership independently of fleetMinorVersion.
+# Only installDefaultVersion is exposed in the public Channel spec; the support
+# minimum and fleet upgrade authorization are private platform configuration.
+# Example:
+# channels:
+#   stable:
+#     minimumSupportedVersion: "4.22"
+#     installDefaultVersion: "4.22.14"
+#     fleetMinorVersion: "4.23"
 channels: {}
 
 serviceAccount:
