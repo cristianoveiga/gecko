@@ -190,6 +190,7 @@ func main() {
 	}
 
 	// Create server with resource configuration
+	publicResources := getPublicResources()
 	publicMiddlewareFactory := func(factory apiserver.StorageFactory, privateScheme *runtime.Scheme, stopCh <-chan struct{}) ([]func(http.Handler) http.Handler, error) {
 		stores, err := authz.NewStores(factory, privateScheme)
 		if err != nil {
@@ -212,7 +213,7 @@ func main() {
 			return nil, fmt.Errorf("failed to load authorization policy: %w", err)
 		}
 		authorizer.StartWatching(stopCh)
-		authorization := authz.Middleware(authorizer, logger)
+		authorization := authz.Middleware(authorizer, logger, publicResources)
 		return []func(http.Handler) http.Handler{
 			authn.Middleware(authn.Config{AllowDevHeader: devAuth}),
 			conditionalAuthorizationMiddleware(featureFlagEvaluator, authorization, logger),
@@ -235,7 +236,7 @@ func main() {
 			Enable:            enablePublic,
 			Address:           publicAddress,
 			Port:              publicPort,
-			Resources:         getPublicResources(),
+			Resources:         publicResources,
 			Scheme:            getPublicScheme(),
 			MiddlewareFactory: publicMiddlewareFactory,
 		},
