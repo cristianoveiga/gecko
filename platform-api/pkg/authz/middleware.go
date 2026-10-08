@@ -8,26 +8,33 @@ import (
 
 	"github.com/go-logr/logr"
 
+	"github.com/openshift-online/gecko/orlop/pkg/apiserver/types"
 	"github.com/openshift-online/gecko/platform-api/pkg/authn"
+	"github.com/openshift-online/gecko/platform-api/pkg/publicaccess"
 )
 
 // Middleware enforces Cedar authorization for the public CRUD API. The
 // object-state-aware and per-item list phases are not part of this foundation;
 // it authorizes namespace-scoped operations and fails closed for
 // cross-namespace collection requests.
-func Middleware(authorizer *Authorizer, logger logr.Logger) func(http.Handler) http.Handler {
+func Middleware(authorizer *Authorizer, logger logr.Logger, authorizationExemptResources []types.ResourceInfo) func(http.Handler) http.Handler {
 	if logger.GetSink() == nil {
 		logger = logr.Discard()
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isMetadataPath(r.URL.Path) {
+			if isMetadataPath(r.URL.Path) || publicaccess.IsAuthorizationExemptRequest(r, authorizationExemptResources) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			email, ok := authn.UserFromContext(r.Context())
 			if !ok {
+				writeForbidden(w)
+				return
+			}
+			if authorizer == nil {
+				logger.Error(fmt.Errorf("authorizer is not configured"), "authorization denied")
 				writeForbidden(w)
 				return
 			}
