@@ -387,6 +387,17 @@ func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert the existing object to the serving version once; it is reused
+	// for authorization, CEL old-object validation, and CustomValidator.
+	existingServing, err := h.convertToServingVersion(existing)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting old object to serving version: %v", err))
+		return
+	}
+	if !authorizeRequestObject(w, r, existingServing) {
+		return
+	}
+
 	// Parse request body as map for schema processing
 	var objMap map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&objMap); err != nil {
@@ -400,13 +411,7 @@ func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert the existing object to the serving version once; it is reused
-	// both for building the CEL old-object map and for the CustomValidator call.
-	existingServing, err := h.convertToServingVersion(existing)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting old object to serving version: %v", err))
-		return
-	}
+	// Build an old-object map from the serving representation.
 	oldObjMap, err := toObjMap(existingServing)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("building old-object map: %v", err))
@@ -467,6 +472,13 @@ func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorize the effective object before any mutation side effects, including
+	// finalizer-driven hard deletion.
+	clientObj.GetObjectKind().SetGroupVersionKind(h.gvk)
+	if !authorizeRequestObject(w, r, clientObj) {
+		return
+	}
+
 	// Check if spec changed and increment generation if so.
 	//
 	// Compare against a copy of existing that has gone through the same
@@ -521,12 +533,6 @@ func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(status)
 			return
 		}
-	}
-
-	// Set GVK
-	clientObj.GetObjectKind().SetGroupVersionKind(h.gvk)
-	if !authorizeRequestObject(w, r, clientObj) {
-		return
 	}
 
 	// Validate owner references exist
@@ -609,6 +615,16 @@ func (h *ResourceHandler) ApplyPatch(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.IsNotFound(err) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get object: %v", err))
 		return
+	}
+	if existing != nil {
+		existingServing, err := h.convertToServingVersion(existing)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting existing object to serving version: %v", err))
+			return
+		}
+		if !authorizeRequestObject(w, r, existingServing) {
+			return
+		}
 	}
 
 	// Perform server-side apply

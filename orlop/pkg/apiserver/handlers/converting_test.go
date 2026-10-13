@@ -350,6 +350,71 @@ func TestConvertingResourceHandler_Update_PreservesDeletionTimestamp(t *testing.
 	}
 }
 
+func TestConvertingResourceHandlerMutationRequiresStoredAuthorization(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      string
+		contentType string
+		body        []byte
+		handle      func(*ConvertingResourceHandler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:        "update",
+			method:      http.MethodPut,
+			contentType: constants.ContentTypeJSON,
+			body:        []byte(`{"metadata":{"name":"hidden"},"spec":{"field":"allowed"}}`),
+			handle:      (*ConvertingResourceHandler).Update,
+		},
+		{
+			name:        "patch",
+			method:      http.MethodPatch,
+			contentType: constants.ContentTypeMergePatch,
+			body:        []byte(`{"spec":{"field":"allowed"}}`),
+			handle:      (*ConvertingResourceHandler).Patch,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, store := setupConvertingHandlerTest(t)
+			existing := createTestObject("hidden", "default", nil)
+			existing.Spec.Field = "hidden"
+			if err := store.Create(context.Background(), existing); err != nil {
+				t.Fatal(err)
+			}
+
+			calls := 0
+			req := httptest.NewRequest(tt.method, "/apis/test.io/v1/namespaces/default/testobjects/hidden", bytes.NewReader(tt.body))
+			req.Header.Set(constants.HeaderContentType, tt.contentType)
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add(constants.URLParamNamespace, "default")
+			rctx.URLParams.Add(constants.URLParamName, "hidden")
+			ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+			ctx = WithObjectAuthorizer(ctx, func(_ context.Context, obj client.Object) (bool, error) {
+				calls++
+				return obj.(*mockObject).Spec.Field != "hidden", nil
+			})
+
+			rr := httptest.NewRecorder()
+			tt.handle(handler, rr, req.WithContext(ctx))
+			if rr.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d: %s", rr.Code, http.StatusForbidden, rr.Body.String())
+			}
+			if calls != 1 {
+				t.Fatalf("authorizer calls = %d, want 1 stored-object check", calls)
+			}
+
+			stored, err := store.Get(context.Background(), "default", "hidden")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := stored.(*mockObject).Spec.Field; got != "hidden" {
+				t.Fatalf("stored field = %q, want unchanged hidden", got)
+			}
+		})
+	}
+}
+
 // Note: Finalizer removal via public API is not supported - finalizers are internal fields
 // not exposed on the public API. Controllers remove finalizers via the private API.
 // The integration test finalizer_public_api_test.go verifies this correctly.

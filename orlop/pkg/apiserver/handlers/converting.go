@@ -584,6 +584,14 @@ func (h *ConvertingResourceHandler) Update(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
+	existingPublic, err := h.toPublicClientObject(existingPrivate)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to convert existing object for authorization: %v", err))
+		return
+	}
+	if !authorizeRequestObject(w, r, existingPublic) {
+		return
+	}
 
 	// Parse request body
 	var objMap map[string]interface{}
@@ -601,15 +609,7 @@ func (h *ConvertingResourceHandler) Update(w http.ResponseWriter, r *http.Reques
 
 	// Build an old-object map using the public representation so that it
 	// matches the schema of objMap (which is the incoming public request).
-	// Set the GVK on the stored object first: stores may return unstructured
-	// objects without a GVK set, which would cause PrivateToPublic to fail.
-	existingPrivate.GetObjectKind().SetGroupVersionKind(h.gvk)
-	existingPublicForCEL, err := h.converter.PrivateToPublic(existingPrivate)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to convert old object to public: %v", err))
-		return
-	}
-	existingJSONForCEL, err := json.Marshal(existingPublicForCEL)
+	existingJSONForCEL, err := json.Marshal(existingPublic)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("marshaling old object: %v", err))
 		return
@@ -759,6 +759,7 @@ type patchInput struct {
 	objMap          map[string]interface{}
 	oldObjMap       map[string]interface{}
 	existingPrivate client.Object
+	existingPublic  client.Object
 }
 
 // Patch handles PATCH requests to partially update a resource.
@@ -771,6 +772,9 @@ func (h *ConvertingResourceHandler) Patch(w http.ResponseWriter, r *http.Request
 	input, httpStatus, err := h.preparePatch(r, namespace, name)
 	if err != nil {
 		writeError(w, httpStatus, err.Error())
+		return
+	}
+	if !authorizeRequestObject(w, r, input.existingPublic) {
 		return
 	}
 
@@ -843,7 +847,7 @@ func (h *ConvertingResourceHandler) preparePatch(r *http.Request, namespace, nam
 		return patchInput{}, http.StatusNotFound, fmt.Errorf("not found")
 	}
 
-	existingPublic, err := h.converter.PrivateToPublic(existingPrivate)
+	existingPublic, err := h.toPublicClientObject(existingPrivate)
 	if err != nil {
 		return patchInput{}, http.StatusInternalServerError, fmt.Errorf("failed to convert to public: %w", err)
 	}
@@ -888,7 +892,21 @@ func (h *ConvertingResourceHandler) preparePatch(r *http.Request, namespace, nam
 		objMap:          objMap,
 		oldObjMap:       oldObjMap,
 		existingPrivate: existingPrivate,
+		existingPublic:  existingPublic,
 	}, http.StatusOK, nil
+}
+
+func (h *ConvertingResourceHandler) toPublicClientObject(privateObj client.Object) (client.Object, error) {
+	privateObj.GetObjectKind().SetGroupVersionKind(h.gvk)
+	publicObj, err := h.converter.PrivateToPublic(privateObj)
+	if err != nil {
+		return nil, err
+	}
+	publicClientObj, ok := publicObj.(client.Object)
+	if !ok {
+		return nil, fmt.Errorf("public object does not implement client.Object")
+	}
+	return publicClientObj, nil
 }
 
 // patchPublicObject converts the validated, merged public object map into its
