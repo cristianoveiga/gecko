@@ -726,7 +726,7 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
-	if !authorizeRequestObject(w, r, existing) {
+	if _, authorized := h.authorizeStoredObject(w, r, existing); !authorized {
 		return
 	}
 
