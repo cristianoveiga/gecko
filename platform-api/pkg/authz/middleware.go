@@ -28,6 +28,11 @@ func Middleware(authorizer *Authorizer, logger logr.Logger, resources []types.Re
 				next.ServeHTTP(w, r)
 				return
 			}
+			if r.URL.Query().Get("watch") == "true" {
+				logger.Info("authorization denied for unsupported public API watch", "resource", r.URL.Path)
+				writeForbidden(w)
+				return
+			}
 			if publicaccess.IsAuthorizationExemptRequest(r, resources) {
 				next.ServeHTTP(w, r)
 				return
