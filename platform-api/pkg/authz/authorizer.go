@@ -81,10 +81,17 @@ func (a *Authorizer) AuthorizeWithContext(ctx context.Context, email string, act
 		Resource:  cedar.NewEntityUID("Namespace", cedar.String(namespace)),
 		Context:   requestContext,
 	})
-	if len(diagnostic.Errors) > 0 {
-		return false, fmt.Errorf("cedar evaluation failed: %v", diagnostic.Errors)
+	if decision == cedar.Allow {
+		if len(diagnostic.Errors) > 0 {
+			a.logger.Info("cedar policy evaluation reported diagnostics for non-authorizing bindings", "diagnosticCount", len(diagnostic.Errors))
+		}
+		return true, nil
 	}
-	return decision == cedar.Allow, nil
+	if len(diagnostic.Errors) > 0 {
+		a.logger.Error(fmt.Errorf("cedar policy evaluation failed"), "authorization denied after cedar policy evaluation errors", "diagnosticCount", len(diagnostic.Errors))
+		return false, fmt.Errorf("cedar evaluation failed")
+	}
+	return false, nil
 }
 
 // Stores returns the stores used by the authorizer. It is primarily useful

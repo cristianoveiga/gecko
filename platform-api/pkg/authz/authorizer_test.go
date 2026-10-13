@@ -117,6 +117,89 @@ func TestAuthorizerEvaluatesEffectiveObjectState(t *testing.T) {
 	}
 }
 
+func TestAuthorizerAllowsIndependentBindingWhenConditionEvaluationFails(t *testing.T) {
+	stores, authorizer := newTestAuthorizer(t)
+	role := &privatev1.PlatformRole{Spec: privatev1.PlatformRoleSpec{Permissions: []string{"cluster.get"}}}
+	role.Name = "cluster-viewer"
+	role.SetGroupVersionKind(privatev1.GroupVersion.WithKind("PlatformRole"))
+	if err := stores.PlatformRoles.Create(context.Background(), role); err != nil {
+		t.Fatal(err)
+	}
+	condition := `context.spec.region == "us-east1"`
+	for _, tt := range []struct {
+		name      string
+		condition *string
+	}{
+		{
+			name: "unconditional-viewer",
+		},
+		{
+			name:      "conditioned-viewer",
+			condition: &condition,
+		},
+	} {
+		binding := &privatev1.RoleBinding{Spec: privatev1.RoleBindingSpec{
+			Subject:   "alice@example.com",
+			RoleRef:   privatev1.RoleRef{Kind: "PlatformRole", Name: "cluster-viewer", APIGroup: privatev1.GroupVersion.Group},
+			Condition: tt.condition,
+		}}
+		binding.Name = tt.name
+		binding.Namespace = "project-a"
+		binding.SetGroupVersionKind(privatev1.GroupVersion.WithKind("RoleBinding"))
+		if err := stores.RoleBindings.Create(context.Background(), binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := authorizer.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	requestContext, err := cedarContext("cluster", "clusters", "GET", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := authorizer.AuthorizeWithContext(context.Background(), "alice@example.com", GetCluster, "project-a", requestContext)
+	if err != nil || !allowed {
+		t.Fatalf("AuthorizeWithContext() = allowed %t, err %v; want allowed", allowed, err)
+	}
+}
+
+func TestAuthorizerFailsClosedWhenAllMatchingBindingsHaveEvaluationErrors(t *testing.T) {
+	stores, authorizer := newTestAuthorizer(t)
+	role := &privatev1.PlatformRole{Spec: privatev1.PlatformRoleSpec{Permissions: []string{"cluster.get"}}}
+	role.Name = "cluster-viewer"
+	role.SetGroupVersionKind(privatev1.GroupVersion.WithKind("PlatformRole"))
+	if err := stores.PlatformRoles.Create(context.Background(), role); err != nil {
+		t.Fatal(err)
+	}
+	condition := `context.spec.region == "us-east1"`
+	binding := &privatev1.RoleBinding{
+		Spec: privatev1.RoleBindingSpec{
+			Subject:   "alice@example.com",
+			RoleRef:   privatev1.RoleRef{Kind: "PlatformRole", Name: "cluster-viewer", APIGroup: privatev1.GroupVersion.Group},
+			Condition: &condition,
+		},
+	}
+	binding.Name = "conditioned-viewer"
+	binding.Namespace = "project-a"
+	binding.SetGroupVersionKind(privatev1.GroupVersion.WithKind("RoleBinding"))
+	if err := stores.RoleBindings.Create(context.Background(), binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorizer.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	requestContext, err := cedarContext("cluster", "clusters", "GET", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := authorizer.AuthorizeWithContext(context.Background(), "alice@example.com", GetCluster, "project-a", requestContext)
+	if err == nil || allowed {
+		t.Fatalf("AuthorizeWithContext() = allowed %t, err %v; want denied evaluation error", allowed, err)
+	}
+}
+
 func TestHasNamespacePermissionIgnoresBindingConditions(t *testing.T) {
 	stores, authorizer := newTestAuthorizer(t)
 	role := &privatev1.PlatformRole{Spec: privatev1.PlatformRoleSpec{Permissions: []string{"cluster.list"}}}
