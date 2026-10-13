@@ -389,12 +389,8 @@ func (h *ResourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	// Convert the existing object to the serving version once; it is reused
 	// for authorization, CEL old-object validation, and CustomValidator.
-	existingServing, err := h.convertToServingVersion(existing)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting old object to serving version: %v", err))
-		return
-	}
-	if !authorizeRequestObject(w, r, existingServing) {
+	existingServing, authorized := h.authorizeStoredObject(w, r, existing)
+	if !authorized {
 		return
 	}
 
@@ -617,12 +613,7 @@ func (h *ResourceHandler) ApplyPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
-		existingServing, err := h.convertToServingVersion(existing)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting existing object to serving version: %v", err))
-			return
-		}
-		if !authorizeRequestObject(w, r, existingServing) {
+		if _, authorized := h.authorizeStoredObject(w, r, existing); !authorized {
 			return
 		}
 	}
@@ -696,6 +687,18 @@ func (h *ResourceHandler) ApplyPatch(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(responseObj)
 		h.logger.Info("Updated via apply", "namespace", namespace, "name", name, "fieldManager", fieldManager, "force", force)
 	}
+}
+
+func (h *ResourceHandler) authorizeStoredObject(w http.ResponseWriter, r *http.Request, stored client.Object) (client.Object, bool) {
+	serving, err := h.convertToServingVersion(stored)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("converting existing object to serving version: %v", err))
+		return nil, false
+	}
+	if !authorizeRequestObject(w, r, serving) {
+		return nil, false
+	}
+	return serving, true
 }
 
 // Delete handles DELETE requests to delete a resource.
