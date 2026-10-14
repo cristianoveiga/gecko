@@ -343,7 +343,6 @@ func (h *ConvertingResourceHandler) List(w http.ResponseWriter, r *http.Request)
 
 func (h *ConvertingResourceHandler) listOptions(r *http.Request, namespace string) (storage.ListOptions, error) {
 	opts := storage.ListOptions{Namespace: namespace}
-	applyItemFilterToListOptions(r.Context(), &opts)
 	if filter, ok := ItemFilterFromContext(r.Context()); ok {
 		opts.ItemFilter = h.publicItemFilter(filter)
 	}
