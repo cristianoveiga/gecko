@@ -212,23 +212,6 @@ func TestMiddlewareNamespacedListUsesPermissionBeforeConditions(t *testing.T) {
 	}
 }
 
-func TestMiddlewareRejectsNamespacedWatch(t *testing.T) {
-	resources := []types.ResourceInfo{{
-		GVK:        runtimeschema.GroupVersionKind{Group: "gcp.managed.openshift.io", Version: "v1", Kind: "Cluster"},
-		Plural:     "clusters",
-		Namespaced: true,
-	}}
-	ctx := authn.WithUser(context.Background(), "alice@example.com")
-	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/apis/gcp.managed.openshift.io/v1/namespaces/project-a/clusters?watch=true", nil)
-	response := httptest.NewRecorder()
-	Middleware(nil, logr.Discard(), resources)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Fatal("watch request reached the next handler")
-	})).ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
-	}
-}
-
 func TestMiddlewareDefersObjectAuthorizationToHandler(t *testing.T) {
 	stores, authorizer := newTestAuthorizer(t)
 	condition := `context.spec.region == "us-east1"`

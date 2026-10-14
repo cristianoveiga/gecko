@@ -21,7 +21,8 @@ import (
 	runtimeschema "k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func TestMiddlewareAddsRequestIDAndSanitizesWatchLog(t *testing.T) {
+func TestMiddlewareAddsRequestIDAndSanitizesInvalidPathLog(t *testing.T) {
+	_, authorizer := newTestAuthorizer(t)
 	entries := []capturedAuthorizationLog{}
 	logger := logr.FromSlogHandler(&capturedAuthorizationLogHandler{entries: &entries})
 	resources := []types.ResourceInfo{{
@@ -30,11 +31,11 @@ func TestMiddlewareAddsRequestIDAndSanitizesWatchLog(t *testing.T) {
 		Namespaced: true,
 	}}
 	ctx := authn.WithUser(context.Background(), "alice@example.com")
-	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/apis/gcp.managed.openshift.io/v1/namespaces/customer-namespace/clusters/customer-cluster?watch=true", nil)
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/invalid/customer-namespace/customer-cluster", nil)
 	response := httptest.NewRecorder()
 
-	Middleware(nil, logger, resources)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Fatal("watch request reached the next handler")
+	Middleware(authorizer, logger, resources)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("invalid path reached the next handler")
 	})).ServeHTTP(response, request)
 
 	if response.Code != http.StatusForbidden {
@@ -54,8 +55,8 @@ func TestMiddlewareAddsRequestIDAndSanitizesWatchLog(t *testing.T) {
 	if entry.attributes["requestID"] != requestID {
 		t.Fatalf("requestID log attribute = %q, want %q", entry.attributes["requestID"], requestID)
 	}
-	if entry.attributes["reason"] != authorizationReasonUnsupportedWatch {
-		t.Fatalf("reason log attribute = %q, want %q", entry.attributes["reason"], authorizationReasonUnsupportedWatch)
+	if entry.attributes["reason"] != authorizationReasonInvalidPath {
+		t.Fatalf("reason log attribute = %q, want %q", entry.attributes["reason"], authorizationReasonInvalidPath)
 	}
 	if output := entry.String(); strings.Contains(output, "customer-namespace") || strings.Contains(output, "customer-cluster") {
 		t.Fatalf("log leaked customer identifier: %s", output)

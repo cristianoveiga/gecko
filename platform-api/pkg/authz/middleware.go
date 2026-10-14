@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	authorizationReasonUnsupportedWatch        = "unsupported_watch"
 	authorizationReasonInvalidPath             = "invalid_request_path"
 	authorizationReasonClusterScopedRequest    = "cluster_scoped_request"
 	authorizationReasonUnsupportedOperation    = "unsupported_operation"
@@ -54,11 +53,6 @@ func Middleware(authorizer *Authorizer, logger logr.Logger, resources []types.Re
 
 			if isMetadataPath(r.URL.Path) {
 				next.ServeHTTP(w, r)
-				return
-			}
-			if r.URL.Query().Get(constants.QueryParamWatch) == "true" {
-				requestLogger.Info("authorization denied", "reason", authorizationReasonUnsupportedWatch)
-				writeForbidden(w)
 				return
 			}
 			if publicaccess.IsAuthorizationExemptRequest(r, resources) {
